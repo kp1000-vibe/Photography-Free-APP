@@ -19,7 +19,7 @@
 
 ## Blocked / remaining (owner: you unless noted)
 1. ~~Vercel deploy~~ — done 2026-10-18: https://lumen-camera-mu.vercel.app (project `lumen-camera`).
-2. **GitHub repository:** `gh auth login` is needed, plus a repo name or owner to push to.
+2. ~~GitHub repository~~ — pushed 2026-10-18 to https://github.com/kp1000-vibe/Photography-Free-APP.
 3. **Native builds:** need an Expo account (`npx eas-cli login`). Android `.apk`/`.aab` and iOS builds run on EAS.
    - iOS needs an Apple Developer membership ($99/yr).
    - Play needs a $25 registration.

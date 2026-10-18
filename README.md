@@ -44,7 +44,7 @@ Checked on 18 October 2026, on Windows 11 with Node 24. Statuses are PASS, FAIL,
 | Core and editing workflows tested | PASS (unit) / NOT TESTED (device) | 24 core + 4 web unit tests pass; manual device test plan below |
 | Website builds and passes checks | PASS | `next build`, ESLint, `tsc`, vitest all green |
 | Website deployed to Vercel | **PASS** | https://lumen-camera-mu.vercel.app — Vercel project `lumen-camera` (root `apps/web`); all routes return 200, proxy rejects unlisted sizes (404), canonical/OG/sitemap use the production domain, security headers present, gallery graded live in a browser (checked 18 Oct 2026) |
-| GitHub repo with source | BLOCKED | Local git repo committed; `gh` not authenticated |
+| GitHub repo with source | **PASS** | https://github.com/kp1000-vibe/Photography-Free-APP (`main`) |
 | Release artifacts / build instructions | PASS (instructions) | See Releasing below |
 | Store publication requirements listed | PASS | See Releasing below |
 

@@ -6,7 +6,7 @@ import { IconButton } from '../components/IconButton';
 import { AdBanner, useAds } from '../lib/ads';
 import { colors, radius, space, type } from '../theme';
 
-const WEBSITE = (Constants.expoConfig?.extra?.websiteUrl as string | undefined) ?? 'https://lumen-camera.vercel.app';
+const WEBSITE = (Constants.expoConfig?.extra?.websiteUrl as string | undefined) ?? 'https://lumen-camera-mu.vercel.app';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();

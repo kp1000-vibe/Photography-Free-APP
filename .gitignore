@@ -23,3 +23,5 @@ apps/mobile/android/
 *.keystore
 .DS_Store
 .scratch-export/
+
+.vercel

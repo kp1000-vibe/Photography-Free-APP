@@ -43,7 +43,7 @@ Checked on 18 October 2026, on Windows 11 with Node 24. Statuses are PASS, FAIL,
 | Permissions and privacy disclosures | PASS (config) | `app.json` usage strings, blocked mic and location, UMP + ATT flow, `/privacy` page |
 | Core and editing workflows tested | PASS (unit) / NOT TESTED (device) | 24 core + 4 web unit tests pass; manual device test plan below |
 | Website builds and passes checks | PASS | `next build`, ESLint, `tsc`, vitest all green |
-| Website deployed to Vercel | BLOCKED | Waiting on `npx vercel login` |
+| Website deployed to Vercel | **PASS** | https://lumen-camera-mu.vercel.app — Vercel project `lumen-camera` (root `apps/web`); all routes return 200, proxy rejects unlisted sizes (404), canonical/OG/sitemap use the production domain, security headers present, gallery graded live in a browser (checked 18 Oct 2026) |
 | GitHub repo with source | BLOCKED | Local git repo committed; `gh` not authenticated |
 | Release artifacts / build instructions | PASS (instructions) | See Releasing below |
 | Store publication requirements listed | PASS | See Releasing below |
@@ -96,11 +96,10 @@ Needs:
 - Have the legal pages reviewed.
 
 ### Website
+Live at https://lumen-camera-mu.vercel.app. Redeploy from the repo root (the Vercel project's Root Directory is `apps/web`, so `@lumen/core` is uploaded too):
 ```bash
-npx vercel login
-cd apps/web && npx vercel link && npx vercel --prod
-```
-Set **Root Directory** to `apps/web` in the Vercel project; npm workspaces install `@lumen/core` automatically. Vercel Hobby is for non-commercial use, so an ad-supported product should use Pro.
+npx vercel deploy --prod
+``` Vercel Hobby is for non-commercial use, so an ad-supported product should use Pro.
 
 ## License
 Not yet chosen. Tell us which license to apply before publishing the source.

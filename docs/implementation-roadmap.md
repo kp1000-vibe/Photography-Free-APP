@@ -18,7 +18,7 @@
   - Verified in a browser at desktop and 375 px width.
 
 ## Blocked / remaining (owner: you unless noted)
-1. **Vercel deploy:** needs `npx vercel login` (or a token). I can then link and deploy.
+1. ~~Vercel deploy~~ — done 2026-10-18: https://lumen-camera-mu.vercel.app (project `lumen-camera`).
 2. **GitHub repository:** `gh auth login` is needed, plus a repo name or owner to push to.
 3. **Native builds:** need an Expo account (`npx eas-cli login`). Android `.apk`/`.aab` and iOS builds run on EAS.
    - iOS needs an Apple Developer membership ($99/yr).

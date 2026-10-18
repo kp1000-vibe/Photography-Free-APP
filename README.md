@@ -102,4 +102,4 @@ npx vercel deploy --prod
 ``` Vercel Hobby is for non-commercial use, so an ad-supported product should use Pro.
 
 ## License
-Not yet chosen. Tell us which license to apply before publishing the source.
+[MIT](LICENSE). This covers the source code only. The Lumen name and app icon are not licensed as trademarks, and the gallery photos on the website belong to their Unsplash photographers.

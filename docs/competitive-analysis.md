@@ -29,6 +29,15 @@ _Researched 18 October 2026. Sources are listed at the end; anything not backed 
 - **Features:** manual scene/white-balance/ISO/exposure controls, timer, grid, crop guides, HDR, panorama, Camera2 manual controls, RAW, focus peaking, histogram, and an option to strip EXIF.
 - **Lessons:** be transparent, offer real controls and respect privacy. The UI is dense and control-heavy, which is a deliberate trade-off for power users.
 
+### BeautyCam (Meitu) — iOS, Android
+See the full public-evidence teardown in [teardowns/beautycam.md](teardowns/beautycam.md).
+- **Model:** a camera and beauty app with many AI and beauty modes. It's monetised through VIP and SVIP subscriptions, from £4.49/week to £49.99/year (UK App Store).
+- **Privacy:** its iOS privacy label declares photo and video collection.
+- **Complaints:** recurring reports of unexpected subscription charges.
+- **Lessons:**
+  - Copy, for free: the front-camera screen flash, digicam and film looks, and on-device cutout.
+  - Explicitly avoid: face and body reshaping, and anything that uploads photos.
+
 ## Market gap Lumen targets
 
 No reference app combines all of the following:

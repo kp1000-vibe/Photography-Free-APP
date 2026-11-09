@@ -36,6 +36,10 @@ export interface GradeParams {
   highlightTint: Vec3;
   /** 0..1, gentle edge darkening. */
   vignette: number;
+  /** 0..1, edge-preserving smoothing of skin-toned areas. 0 = off. */
+  smooth: number;
+  /** 0..1, softens small dark or red spots on skin. 0 = off. */
+  blemish: number;
 }
 
 export const NEUTRAL: GradeParams = Object.freeze({
@@ -52,6 +56,8 @@ export const NEUTRAL: GradeParams = Object.freeze({
   shadowTint: [0, 0, 0] as Vec3,
   highlightTint: [0, 0, 0] as Vec3,
   vignette: 0,
+  smooth: 0,
+  blemish: 0,
 });
 
 export type FilterFamily =
@@ -180,7 +186,10 @@ export function getFilter(id: string): FilterDefinition {
   return FILTERS.find((f) => f.id === id) ?? FILTERS[0]!;
 }
 
-/** User adjustments from the editor. All -1..1, 0 = unchanged. */
+/**
+ * User adjustments from the editor. Tone controls are -1..1; the skin
+ * controls are 0..1. 0 always means unchanged.
+ */
 export interface Adjustments {
   brightness: number;
   contrast: number;
@@ -188,7 +197,14 @@ export interface Adjustments {
   highlights: number;
   shadows: number;
   warmth: number;
+  /** 0..1. Skin smoothing; opt-in, never applied automatically. */
+  smooth: number;
+  /** 0..1. Blemish softening; opt-in, never applied automatically. */
+  blemish: number;
 }
+
+/** Keys of the opt-in skin controls, which run 0..1 instead of -1..1. */
+export const SKIN_ADJUSTMENTS = ['smooth', 'blemish'] as const satisfies readonly (keyof Adjustments)[];
 
 export const NO_ADJUSTMENTS: Adjustments = Object.freeze({
   brightness: 0,
@@ -197,6 +213,8 @@ export const NO_ADJUSTMENTS: Adjustments = Object.freeze({
   highlights: 0,
   shadows: 0,
   warmth: 0,
+  smooth: 0,
+  blemish: 0,
 });
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -228,6 +246,8 @@ export function resolveParams(
     shadowTint: lerp3(NEUTRAL.shadowTint, full.shadowTint, t),
     highlightTint: lerp3(NEUTRAL.highlightTint, full.highlightTint, t),
     vignette: lerp(NEUTRAL.vignette, full.vignette, t),
+    smooth: lerp(NEUTRAL.smooth, full.smooth, t),
+    blemish: lerp(NEUTRAL.blemish, full.blemish, t),
   };
   return {
     ...p,
@@ -237,6 +257,9 @@ export function resolveParams(
     highlights: clamp(p.highlights + adjustments.highlights, -1, 1),
     shadows: clamp(p.shadows + adjustments.shadows, -1, 1),
     temperature: clamp(p.temperature + adjustments.warmth * 0.6, -1, 1),
+    // Edits saved before the skin controls existed have no value for them.
+    smooth: clamp(p.smooth + (adjustments.smooth ?? 0), 0, 1),
+    blemish: clamp(p.blemish + (adjustments.blemish ?? 0), 0, 1),
   };
 }
 

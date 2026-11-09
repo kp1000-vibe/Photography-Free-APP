@@ -29,7 +29,7 @@
 | 7 | Exposure compensation, tap to focus | **Adopt** | Useful, low clutter | ✓ | ✓ | ✗ | camera |
 | 8 | Full manual ISO/shutter/WB | **Exclude (v1)** | Clutter; device-dependent | ? | ? | ✗ | Camera2 / AVFoundation |
 | 9 | RAW capture | **Exclude (v1)** | Can't promise across devices | ? | ? | ✗ | native |
-| 10 | Face reshaping / beauty | **Exclude** | Against the "natural" positioning | — | — | — | — |
+| 10 | Face reshaping / makeup | **Exclude** | Against the "natural" positioning | — | — | — | — |
 | 11 | Subscriptions / IAP / watermark | **Exclude (forbidden)** | Product promise | — | — | — | — |
 | 12 | Strict ad-placement rules in code | **Differentiate** | Trust | ✓ | ✓ | n/a | AdMob SDK |
 | 13 | Daily photo showcase on the website | **Differentiate** | Discovery; shows the filters | n/a | n/a | ✓ | no |

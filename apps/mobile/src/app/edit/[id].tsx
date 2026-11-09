@@ -34,7 +34,14 @@ import { getPhoto, removePhoto, updatePhoto, useLibrary, type LibraryItem } from
 import { gradeEffect } from '../../lib/skiaGrade';
 import { colors, radius, space, type } from '../../theme';
 
-type Tab = 'filters' | 'adjust' | 'crop';
+type Tab = 'filters' | 'adjust' | 'skin' | 'crop';
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'filters', label: 'Filters' },
+  { id: 'adjust', label: 'Adjust' },
+  { id: 'skin', label: 'Skin' },
+  { id: 'crop', label: 'Crop' },
+];
 
 const ADJUSTMENTS: { key: keyof Adjustments; label: string }[] = [
   { key: 'brightness', label: 'Brightness' },
@@ -43,6 +50,12 @@ const ADJUSTMENTS: { key: keyof Adjustments; label: string }[] = [
   { key: 'highlights', label: 'Highlights' },
   { key: 'shadows', label: 'Shadows' },
   { key: 'warmth', label: 'Warmth' },
+];
+
+/** Opt-in retouching. These run 0..1 and are off until the user moves them. */
+const SKIN: { key: keyof Adjustments; label: string }[] = [
+  { key: 'smooth', label: 'Smooth' },
+  { key: 'blemish', label: 'Blemishes' },
 ];
 
 const CROPS: { id: string; label: string; aspect: number | null }[] = [
@@ -91,6 +104,7 @@ function Editor({ item }: { item: LibraryItem }) {
   const [savedEdit, setSavedEdit] = useState<EditState>(item.edit);
   const [tab, setTab] = useState<Tab>('filters');
   const [adjustKey, setAdjustKey] = useState<keyof Adjustments>('brightness');
+  const [skinKey, setSkinKey] = useState<keyof Adjustments>('smooth');
   const [comparing, setComparing] = useState(false);
   const [baseSize, setBaseSize] = useState<{ width: number; height: number } | null>(null);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
@@ -100,6 +114,14 @@ function Editor({ item }: { item: LibraryItem }) {
   const [canvas, setCanvas] = useState({ width: 0, height: 0 });
 
   const current = draft ?? history.present;
+
+  // The Adjust and Skin tabs share one slider-and-chips panel.
+  const sliders = tab === 'skin' ? SKIN : ADJUSTMENTS;
+  const sliderKey = tab === 'skin' ? skinKey : adjustKey;
+  const setSliderKey = tab === 'skin' ? setSkinKey : setAdjustKey;
+  const sliderLabel = sliders.find((a) => a.key === sliderKey)!.label;
+  // Photos edited before the skin controls existed have no value stored for them.
+  const sliderValue = (key: keyof Adjustments) => current.adjustments[key] ?? 0;
 
   // Upright size of the original, for aspect-ratio crops.
   useEffect(() => {
@@ -295,35 +317,37 @@ function Editor({ item }: { item: LibraryItem }) {
           </View>
         )}
 
-        {tab === 'adjust' && (
+        {(tab === 'adjust' || tab === 'skin') && (
           <View style={styles.panelBody}>
+            {tab === 'skin' && <Text style={styles.hint}>Evens out skin texture and softens small spots. Faces are never reshaped.</Text>}
             <View style={styles.sliderRow}>
-              <Text style={styles.sliderLabel}>{ADJUSTMENTS.find((a) => a.key === adjustKey)!.label}</Text>
+              <Text style={styles.sliderLabel}>{sliderLabel}</Text>
               <View style={{ flex: 1 }}>
                 <Slider
-                  value={current.adjustments[adjustKey]}
-                  min={-1}
+                  key={sliderKey}
+                  value={sliderValue(sliderKey)}
+                  min={tab === 'skin' ? 0 : -1}
                   max={1}
                   origin={0}
-                  onChange={(v) => preview({ ...current, adjustments: { ...current.adjustments, [adjustKey]: v } })}
-                  onCommit={(v) => commit({ ...current, adjustments: { ...current.adjustments, [adjustKey]: v } })}
-                  accessibilityLabel={ADJUSTMENTS.find((a) => a.key === adjustKey)!.label}
+                  onChange={(v) => preview({ ...current, adjustments: { ...current.adjustments, [sliderKey]: v } })}
+                  onCommit={(v) => commit({ ...current, adjustments: { ...current.adjustments, [sliderKey]: v } })}
+                  accessibilityLabel={tab === 'skin' ? `${sliderLabel}, skin retouching` : sliderLabel}
                   formatValue={(v) => `${Math.round(v * 100)}`}
                 />
               </View>
             </View>
             <View style={styles.chips}>
-              {ADJUSTMENTS.map((a) => {
-                const changed = Math.abs(current.adjustments[a.key]) > 0.005;
+              {sliders.map((a) => {
+                const changed = Math.abs(sliderValue(a.key)) > 0.005;
                 return (
                   <Pressable
                     key={a.key}
-                    onPress={() => setAdjustKey(a.key)}
-                    style={[styles.chip, adjustKey === a.key && styles.chipActive]}
+                    onPress={() => setSliderKey(a.key)}
+                    style={[styles.chip, sliderKey === a.key && styles.chipActive]}
                     accessibilityRole="button"
-                    accessibilityState={{ selected: adjustKey === a.key }}
+                    accessibilityState={{ selected: sliderKey === a.key }}
                   >
-                    <Text style={[styles.chipText, adjustKey === a.key && styles.chipTextActive]}>
+                    <Text style={[styles.chipText, sliderKey === a.key && styles.chipTextActive]}>
                       {a.label}
                       {changed ? ' •' : ''}
                     </Text>
@@ -369,9 +393,9 @@ function Editor({ item }: { item: LibraryItem }) {
         )}
 
         <View style={styles.tabs} accessibilityRole="tablist">
-          {(['filters', 'adjust', 'crop'] as Tab[]).map((t) => (
-            <Pressable key={t} onPress={() => setTab(t)} style={styles.tab} accessibilityRole="tab" accessibilityState={{ selected: tab === t }}>
-              <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t === 'filters' ? 'Filters' : t === 'adjust' ? 'Adjust' : 'Crop'}</Text>
+          {TABS.map((t) => (
+            <Pressable key={t.id} onPress={() => setTab(t.id)} style={styles.tab} accessibilityRole="tab" accessibilityState={{ selected: tab === t.id }}>
+              <Text style={[styles.tabText, tab === t.id && styles.tabTextActive]}>{t.label}</Text>
             </Pressable>
           ))}
         </View>
@@ -416,6 +440,7 @@ const styles = StyleSheet.create({
   panelBody: { gap: space.sm, minHeight: 130, justifyContent: 'flex-end' },
   sliderRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, gap: space.md, minHeight: 44 },
   sliderLabel: { ...type.caption, color: colors.textMuted, width: 80 },
+  hint: { ...type.caption, color: colors.textMuted, paddingHorizontal: space.lg },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, paddingHorizontal: space.lg },
   chip: { minHeight: 40, paddingHorizontal: space.md, borderRadius: radius.pill, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   chipActive: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.accent },

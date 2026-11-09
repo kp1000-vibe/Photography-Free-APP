@@ -34,9 +34,9 @@ The App Store description names the features but **does not label which are VIP*
 | | Film-camera styles | VIP? | **Have, free.** Lumen's Film filter; can add 2–3 film variants. |
 | | Photo Booth (frames and effects) | VIP? | **Later, free.** A 2×2 / 1×4 strip layout made from consecutive captures; frames must be original artwork. |
 | **Lighting** | "Vibe Light" low-light selfie light | VIP? | **Adopt, free.** A front-camera screen flash (white screen overlay at capture). Cheap, and big for selfies. |
-| **Portrait / beauty** | Portrait styles, AI facial feature enhancement | VIP? | **Adopt the subtle part.** Lumen's Portrait filter already exists. Optional skin smoothing would need on-device face detection; later, opt-in, and off by default. |
+| **Portrait / beauty** | Portrait styles, AI facial feature enhancement | VIP? | **Adopted the subtle part, free.** Lumen's Portrait filter, plus opt-in skin smoothing (off by default). It finds skin by colour on the GPU, so it needs no face detection and runs live in the viewfinder. |
 | | Makeup | VIP? | **Exclude.** Conflicts with the "natural" positioning. |
-| | Wrinkle removal, concealer | VIP? | **Maybe later.** A gentle, opt-in "Soften" (local contrast reduction on skin), never automatic. |
+| | Wrinkle removal, concealer | VIP? | **Adopted the gentle part, free.** Opt-in blemish softening for small dark or red spots on skin, never automatic. No concealer or wrinkle-removal mode. |
 | | 3D nose sculpting, face/body reshaping, **AI Slimming** | VIP? | **Exclude permanently.** Face and body reshaping goes against Lumen's PRD non-goals and raises body-image concerns. |
 | | Hairstyle and hair-colour change | VIP? | **Exclude.** Generative; off-brand. |
 | **AI editing** | AI Removal (objects / obstructions) | VIP? | **Later, free, on-device only.** Needs an inpainting model running locally (no uploads). Research feasibility on mid-range phones. |

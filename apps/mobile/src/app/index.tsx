@@ -10,6 +10,7 @@ import { useCameraDevice, useCameraPermission, usePhotoOutput, type FlashMode } 
 import { SkiaCamera, type SkiaCameraRef } from 'react-native-vision-camera-skia';
 import { createSynchronizable } from 'react-native-worklets';
 import {
+  NO_ADJUSTMENTS,
   centeredCrop,
   getFilter,
   isNeutral,
@@ -38,6 +39,13 @@ type AspectId = (typeof ASPECTS)[number]['id'];
 
 const TIMERS = [0, 3, 10] as const;
 const FLASH_ORDER: FlashMode[] = ['off', 'auto', 'on'];
+
+/** Opt-in skin retouching; both start at 0 and nothing is applied until the user asks. */
+const SKIN = [
+  { key: 'smooth', label: 'Smooth' },
+  { key: 'blemish', label: 'Blemish' },
+] as const;
+type SkinKey = (typeof SKIN)[number]['key'];
 
 export default function CameraScreen() {
   const insets = useSafeAreaInsets();
@@ -86,17 +94,21 @@ export default function CameraScreen() {
   const [zoom, setZoom] = useState(1);
   const [exposure, setExposure] = useState(0);
   const [showExposure, setShowExposure] = useState(false);
+  const [skin, setSkin] = useState<Record<SkinKey, number>>({ smooth: 0, blemish: 0 });
+  const [skinKey, setSkinKey] = useState<SkinKey>('smooth');
+  const [showSkin, setShowSkin] = useState(false);
+  const skinOn = skin.smooth > 0 || skin.blemish > 0;
   const [pending, setPending] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const [flashOverlay, setFlashOverlay] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // Push the selected filter to the frame thread.
+  // Push the selected filter and skin retouching to the frame thread.
   useEffect(() => {
-    const params = resolveParams(getFilter(filterId), intensity);
+    const params = resolveParams(getFilter(filterId), intensity, { ...NO_ADJUSTMENTS, smooth: skin.smooth, blemish: skin.blemish });
     liveGrade.setBlocking(isNeutral(params) ? null : toSkslUniformArray(params, 0, 0).slice(2));
-  }, [filterId, intensity]);
+  }, [filterId, intensity, skin]);
 
   const photoOutput = usePhotoOutput({ qualityPrioritization: 'balanced' });
   const outputs = useMemo(() => [photoOutput], [photoOutput]);
@@ -140,7 +152,7 @@ export default function CameraScreen() {
     const edit: EditState = {
       filterId,
       intensity,
-      adjustments: { brightness: 0, contrast: 0, saturation: 0, highlights: 0, shadows: 0, warmth: 0 },
+      adjustments: { ...NO_ADJUSTMENTS, smooth: skin.smooth, blemish: skin.blemish },
       rotation: 0,
       crop: centeredCrop(3, 4, aspect === '3:4' ? null : aspectValue),
     };
@@ -230,7 +242,14 @@ export default function CameraScreen() {
           Grid
         </IconButton>
         {exposureRange && (
-          <IconButton label="Exposure" onPress={() => setShowExposure((s) => !s)} active={showExposure || exposure !== 0}>
+          <IconButton
+            label="Exposure"
+            onPress={() => {
+              setShowExposure((s) => !s);
+              setShowSkin(false);
+            }}
+            active={showExposure || exposure !== 0}
+          >
             ±EV
           </IconButton>
         )}
@@ -293,6 +312,18 @@ export default function CameraScreen() {
             <View style={[styles.gridLineH, { top: '66.66%' }]} />
           </View>
         )}
+        <Pressable
+          style={[styles.skinToggle, { top: maskHeight + space.md }]}
+          onPress={() => {
+            setShowSkin((s) => !s);
+            setShowExposure(false);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`Skin retouching, ${skinOn ? 'on' : 'off'}`}
+          accessibilityState={{ expanded: showSkin }}
+        >
+          <Text style={[styles.pillText, (showSkin || skinOn) && styles.zoomTextActive]}>Skin</Text>
+        </Pressable>
         {focusPoint && <View pointerEvents="none" style={[styles.focusRing, { left: focusPoint.x - 32, top: focusPoint.y - 32 }]} />}
         {flashOverlay && <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.shutterFlash]} />}
         {countdown > 0 && (
@@ -351,6 +382,33 @@ export default function CameraScreen() {
                 onChange={setExposure}
                 accessibilityLabel="Exposure compensation"
                 formatValue={(v) => `${v.toFixed(1)} EV`}
+              />
+            </View>
+          </View>
+        ) : showSkin ? (
+          <View style={styles.sliderRow}>
+            {SKIN.map((s) => (
+              <Pressable
+                key={s.key}
+                onPress={() => setSkinKey(s.key)}
+                style={[styles.skinChip, skinKey === s.key && styles.skinChipActive]}
+                accessibilityRole="button"
+                accessibilityLabel={`${s.label}, ${Math.round(skin[s.key] * 100)} percent`}
+                accessibilityState={{ selected: skinKey === s.key }}
+              >
+                <Text style={[styles.pillText, skinKey !== s.key && styles.skinChipTextIdle]}>
+                  {s.label}
+                  {skin[s.key] > 0 ? ' •' : ''}
+                </Text>
+              </Pressable>
+            ))}
+            <View style={{ flex: 1 }}>
+              <Slider
+                key={skinKey}
+                value={skin[skinKey]}
+                onChange={(v) => setSkin((prev) => ({ ...prev, [skinKey]: v }))}
+                accessibilityLabel={`${SKIN.find((s) => s.key === skinKey)!.label} skin retouching`}
+                formatValue={(v) => `${Math.round(v * 100)} percent`}
               />
             </View>
           </View>
@@ -457,6 +515,10 @@ const styles = StyleSheet.create({
   zoomChipActive: { backgroundColor: 'rgba(255,255,255,0.15)' },
   zoomText: { ...type.caption, color: colors.text },
   zoomTextActive: { color: colors.accent },
+  skinToggle: { position: 'absolute', right: space.md, minWidth: 48, height: 44, paddingHorizontal: space.md, borderRadius: radius.pill, backgroundColor: colors.scrim, alignItems: 'center', justifyContent: 'center' },
+  skinChip: { height: 40, paddingHorizontal: space.md, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
+  skinChipActive: { backgroundColor: colors.surfaceRaised },
+  skinChipTextIdle: { color: colors.textMuted },
   controls: { flex: 1, justifyContent: 'flex-end', gap: space.sm },
   sliderRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, gap: space.md, minHeight: 44 },
   sliderLabel: { ...type.caption, color: colors.textMuted, width: 64 },

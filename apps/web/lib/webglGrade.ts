@@ -68,6 +68,7 @@ export class GradeRenderer {
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
     gl.uniform1i(this.loc("u_mirror"), mirror ? 1 : 0);
+    gl.uniform2f(this.loc("u_size"), width, height);
     for (const [name, value] of Object.entries(toUniforms(params))) {
       if (Array.isArray(value)) gl.uniform3f(this.loc(name), value[0]!, value[1]!, value[2]!);
       else gl.uniform1f(this.loc(name), value as number);

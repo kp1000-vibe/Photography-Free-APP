@@ -22,6 +22,86 @@ uniform float u_mono;
 uniform vec3 u_shadowTint;
 uniform vec3 u_highlightTint;
 uniform float u_vignette;
+uniform float u_smooth;
+uniform float u_blemish;
+`;
+
+/**
+ * Opt-in skin retouching, run on the source image before grading. It needs
+ * `u_size` (image size in pixels) and a `vec3 lumenSample(vec2 uv)` function
+ * from the wrapper, because WebGL and SkSL read neighbouring pixels differently.
+ *
+ * There is no face detection: skin is found by colour (a chroma range that
+ * holds across light and dark skin tones), so the pass works live in the
+ * viewfinder, needs no model and nothing leaves the device. It reads two
+ * rings of neighbours around each pixel:
+ *
+ * - Smoothing is a bilateral average: neighbours that look like the centre
+ *   pixel count, neighbours across an edge do not, so pores and fine texture
+ *   even out while eyes, lips, hair and outlines stay sharp.
+ * - Blemish softening pulls a pixel toward the mean of the outer ring when it
+ *   is a little darker or redder than that ring *and* the ring itself is even
+ *   skin. A small spot sits inside an even ring; a feature edge does not.
+ *
+ * Keep this in lock-step with `retouchSkinRGBA` in `grade.ts`.
+ */
+export const SKIN_FUNCTION = `
+float lumenSkinMask(vec3 c) {
+  float y = dot(c, vec3(0.299, 0.587, 0.114));
+  float cb = 0.5 + dot(c, vec3(-0.168736, -0.331264, 0.5));
+  float cr = 0.5 + dot(c, vec3(0.5, -0.418688, -0.081312));
+  return smoothstep(0.04, 0.12, y)
+    * smoothstep(0.29, 0.33, cb) * (1.0 - smoothstep(0.49, 0.52, cb))
+    * smoothstep(0.505, 0.535, cr) * (1.0 - smoothstep(0.67, 0.71, cr));
+}
+
+vec3 lumenSkin(vec3 c, vec2 uv) {
+  if (u_smooth <= 0.0 && u_blemish <= 0.0) return c;
+
+  vec2 radius = vec2(0.012 * min(u_size.x, u_size.y)) / u_size;
+  float cl = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  float cr = c.r - c.g;
+
+  vec3 sum = c;
+  float weight = 1.0;
+  vec3 ring = vec3(0.0);
+  vec2 m1 = vec2(0.0);
+  vec2 m2 = vec2(0.0);
+
+  for (int i = 0; i < 8; i++) {
+    float a = float(i) * 0.7853982;
+    vec3 s = lumenSample(uv + vec2(cos(a), sin(a)) * radius);
+    vec3 d = s - c;
+    float w = exp(-78.0 * dot(d, d));
+    sum += s * w;
+    weight += w;
+    ring += s;
+    vec2 rel = vec2(dot(s, vec3(0.2126, 0.7152, 0.0722)) - cl, s.r - s.g - cr);
+    m1 += rel;
+    m2 += rel * rel;
+  }
+  for (int i = 0; i < 6; i++) {
+    float a = float(i) * 1.0471976 + 0.5;
+    vec3 s = lumenSample(uv + vec2(cos(a), sin(a)) * radius * 0.45);
+    vec3 d = s - c;
+    float w = exp(-78.0 * dot(d, d));
+    sum += s * w;
+    weight += w;
+  }
+
+  vec3 result = mix(c, sum / weight, u_smooth * 0.9 * lumenSkinMask(c));
+
+  ring /= 8.0;
+  m1 /= 8.0;
+  m2 /= 8.0;
+  vec2 variance = max(m2 - m1 * m1, vec2(0.0));
+  float even = 1.0 - smoothstep(0.02, 0.06, sqrt(variance.x + variance.y));
+  float darker = m1.x;
+  float redder = -m1.y;
+  float spot = max(smoothstep(0.02, 0.07, darker), smoothstep(0.02, 0.07, redder))
+    * (1.0 - smoothstep(0.22, 0.35, darker));
+  return mix(result, ring, u_blemish * even * lumenSkinMask(ring) * spot);
+}
 `;
 
 export const GRADE_FUNCTION = `
@@ -64,11 +144,16 @@ vec3 lumenGrade(vec3 c, vec2 uv) {
 export const WEBGL_FRAGMENT_SHADER = `precision mediump float;
 varying vec2 v_uv;
 uniform sampler2D u_image;
+uniform vec2 u_size;
 ${GRADE_UNIFORMS}
+vec3 lumenSample(vec2 uv) {
+  return texture2D(u_image, uv).rgb;
+}
+${SKIN_FUNCTION}
 ${GRADE_FUNCTION}
 void main() {
   vec4 src = texture2D(u_image, v_uv);
-  gl_FragColor = vec4(lumenGrade(src.rgb, v_uv), src.a);
+  gl_FragColor = vec4(lumenGrade(lumenSkin(src.rgb, v_uv), v_uv), src.a);
 }
 `;
 
@@ -86,16 +171,21 @@ void main() {
 
 /**
  * SkSL runtime effect for React Native Skia. `image` is the camera frame or
- * photo; `u_size` is its size in pixels so the vignette is resolution
- * independent.
+ * photo; `u_size` is its size in pixels so the vignette and the skin pass
+ * are resolution independent.
  */
 export const SKSL_SHADER = `uniform shader image;
 uniform vec2 u_size;
 ${GRADE_UNIFORMS}
+vec3 lumenSample(vec2 uv) {
+  return image.eval(uv * u_size).rgb;
+}
+${SKIN_FUNCTION}
 ${GRADE_FUNCTION}
 half4 main(float2 xy) {
   vec4 src = image.eval(xy);
-  return half4(lumenGrade(src.rgb, xy / u_size), src.a);
+  vec2 uv = xy / u_size;
+  return half4(lumenGrade(lumenSkin(src.rgb, uv), uv), src.a);
 }
 `;
 
@@ -120,6 +210,8 @@ export function toSkslUniformArray(p: GradeParams, width: number, height: number
     ...p.shadowTint,
     ...p.highlightTint,
     p.vignette,
+    p.smooth,
+    p.blemish,
   ];
 }
 
@@ -140,5 +232,7 @@ export function toUniforms(p: GradeParams): UniformValues {
     u_shadowTint: [...p.shadowTint],
     u_highlightTint: [...p.highlightTint],
     u_vignette: p.vignette,
+    u_smooth: p.smooth,
+    u_blemish: p.blemish,
   };
 }

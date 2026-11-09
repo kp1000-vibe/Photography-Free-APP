@@ -9,7 +9,7 @@
 - G4. Private by default: no account, no uploads, no first-party analytics.
 
 ## Non-goals (v0.1)
-Video, RAW, manual ISO/shutter/white balance, beauty or face reshaping, cloud sync, social feed, user accounts.
+Video, RAW, manual ISO/shutter/white balance, face or body reshaping and makeup, cloud sync, social feed, user accounts.
 
 ## Requirements and status
 
@@ -43,3 +43,7 @@ Video, RAW, manual ISO/shutter/white balance, beauty or face reshaping, cloud sy
 
 ## Acceptance criteria
 See the Definition of Done table in the [README](../README.md#status).
+
+## Skin retouching (added after v1 scope)
+
+Opt-in skin smoothing and blemish softening, free like everything else. Both are sliders that start at 0, in the camera (the Skin button on the viewfinder) and in the editor (the Skin tab). Nothing is applied unless the user moves a slider. Skin is found by colour on the GPU, so there is no face detection, no model download and no upload. Face and body reshaping stay out of scope.

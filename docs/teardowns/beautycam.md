@@ -41,7 +41,7 @@ The App Store description names the features but **does not label which are VIP*
 | | Hairstyle and hair-colour change | VIP? | **Exclude.** Generative; off-brand. |
 | **AI editing** | AI Removal (objects / obstructions) | VIP? | **Later, free, on-device only.** Needs an inpainting model running locally (no uploads). Research feasibility on mid-range phones. |
 | | AI Expansion (extend borders) | VIP? | **Exclude for now.** Generative and needs large models; server processing would break Lumen's no-upload promise. |
-| | Smart background removal / cutout, background swap | VIP? | **Later, free, on-device.** iOS Vision and Android ML Kit both offer on-device person segmentation. |
+| | Smart background removal / cutout, background swap | VIP? | **Adopted, free, on-device.** Background blur and cutout for people in the editor, using a bundled segmentation model (MediaPipe Selfie Segmenter, Apache 2.0). No background swap yet. |
 | | HD quality restoration | VIP? | **Exclude for now.** Super-resolution models are heavy; revisit. |
 | | AI Effect, AI Wardrobe, AI Nail Art, "painting pet" | VIP? | **Exclude.** Generative novelty, off-brand, and likely server-side. |
 | **Filters** | "Vibrant filters" | Mixed (some packs typically VIP) | **Have, free.** All nine Lumen filters with intensity, free. |
@@ -86,7 +86,7 @@ These come from aggregator and review-analysis sites, mostly about Meitu's apps 
 2. **Worth building free, in this order:**
    1. Front-camera screen flash ("Vibe Light" equivalent).
    2. Digicam filter plus a grain parameter.
-   3. On-device background cutout.
+   3. On-device background cutout. *(Done, with background blur.)*
    4. Photo Booth strips.
    5. On-device object removal (research).
 3. **Never build:** face or body reshaping, slimming, makeup, generative wardrobe or hair changes, or anything that needs photo uploads.

@@ -47,3 +47,7 @@ See the Definition of Done table in the [README](../README.md#status).
 ## Skin retouching (added after v1 scope)
 
 Opt-in skin smoothing and blemish softening, free like everything else. Both are sliders that start at 0, in the camera (the Skin button on the viewfinder) and in the editor (the Skin tab). Nothing is applied unless the user moves a slider. Skin is found by colour on the GPU, so there is no face detection, no model download and no upload. Face and body reshaping stay out of scope.
+
+## Background blur and cutout (added after v1 scope)
+
+In the editor's Background tab: Original, Blur (with a strength slider) or Cutout. A 250 KB model bundled with the app finds the person on the device; the photo is never uploaded and it works offline. Blur exports as a JPEG. Cutout exports as a PNG with a transparent background. If no person is found the photo is left as it is and the editor says so. It is for people fairly close to the camera, not pets or objects, and it is not in the live viewfinder yet.

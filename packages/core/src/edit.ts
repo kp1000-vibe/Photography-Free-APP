@@ -1,4 +1,5 @@
 import { type Adjustments, NO_ADJUSTMENTS, getFilter, resolveParams, type GradeParams } from './filters';
+import { type BackgroundEdit, NO_BACKGROUND } from './subject';
 
 export type Rotation = 0 | 90 | 180 | 270;
 
@@ -19,6 +20,8 @@ export interface EditState {
   adjustments: Adjustments;
   rotation: Rotation;
   crop: CropRect;
+  /** Background blur or cutout around the person. Off unless the user picks one. */
+  background: BackgroundEdit;
 }
 
 export function initialEdit(filterId = 'original', intensity?: number): EditState {
@@ -28,6 +31,26 @@ export function initialEdit(filterId = 'original', intensity?: number): EditStat
     adjustments: { ...NO_ADJUSTMENTS },
     rotation: 0,
     crop: { ...FULL_CROP },
+    background: { ...NO_BACKGROUND },
+  };
+}
+
+/**
+ * Fill in anything a stored edit is missing. Edits saved by older versions of
+ * the app have no skin or background settings; they load with those off.
+ */
+export function normalizeEdit(e: Partial<EditState> | null | undefined): EditState {
+  const base = initialEdit(e?.filterId, e?.intensity);
+  const mode = e?.background?.mode;
+  return {
+    ...base,
+    adjustments: { ...base.adjustments, ...e?.adjustments },
+    rotation: e?.rotation ?? base.rotation,
+    crop: { ...base.crop, ...e?.crop },
+    background: {
+      mode: mode === 'blur' || mode === 'cutout' ? mode : 'none',
+      blur: Math.min(1, Math.max(0, e?.background?.blur ?? NO_BACKGROUND.blur)),
+    },
   };
 }
 
@@ -75,6 +98,11 @@ export const EXPORT_QUALITY = {
 } as const;
 
 export type ExportQuality = keyof typeof EXPORT_QUALITY;
+
+/** A cutout has a transparent background, which JPEG cannot store. */
+export function exportFormat(e: Pick<EditState, 'background'>): { extension: 'jpg' | 'png'; mime: 'image/jpeg' | 'image/png' } {
+  return e.background?.mode === 'cutout' ? { extension: 'png', mime: 'image/png' } : { extension: 'jpg', mime: 'image/jpeg' };
+}
 
 export function exportSize(width: number, height: number, quality: ExportQuality) {
   const { longEdge } = EXPORT_QUALITY[quality];

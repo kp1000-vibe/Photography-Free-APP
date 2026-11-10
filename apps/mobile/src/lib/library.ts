@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Directory, File, Paths } from 'expo-file-system';
 import { useSyncExternalStore } from 'react';
-import { initialEdit, type EditState } from '@lumen/core';
+import { initialEdit, normalizeEdit, type EditState } from '@lumen/core';
 
 /**
  * The app's private photo library. Originals are copied into the app's
@@ -38,7 +38,8 @@ export async function loadLibrary(): Promise<void> {
     const raw = await AsyncStorage.getItem(KEY);
     const parsed: LibraryItem[] = raw ? JSON.parse(raw) : [];
     // Drop entries whose original file was removed by the OS or the user.
-    items = parsed.filter((i) => new File(i.originalUri).exists);
+    // Edits saved by older versions get defaults for settings added since.
+    items = parsed.filter((i) => new File(i.originalUri).exists).map((i) => ({ ...i, edit: normalizeEdit(i.edit) }));
   } catch {
     items = [];
   }

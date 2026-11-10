@@ -8,6 +8,8 @@ const corePath = path.resolve(projectRoot, '../../packages/core');
 const config = getDefaultConfig(projectRoot);
 config.watchFolders = [...(config.watchFolders ?? []), corePath];
 config.resolver.extraNodeModules = { ...(config.resolver.extraNodeModules ?? {}), '@lumen/core': corePath };
+// The person-segmentation model is bundled as an asset.
+config.resolver.assetExts = [...config.resolver.assetExts, 'tflite'];
 config.resolver.nodeModulesPaths = [path.resolve(projectRoot, 'node_modules')];
 
 module.exports = config;

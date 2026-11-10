@@ -6,16 +6,20 @@ import {
   EXPORT_QUALITY,
   cropToPixels,
   editParams,
+  exportFormat,
   isNeutral,
   type EditState,
   type ExportQuality,
 } from '@lumen/core';
-import { encodeJpeg, gradeImage } from './skiaGrade';
+import { encodeJpeg, encodePng, renderImage, type Backdrop } from './skiaGrade';
+import { segmentPerson } from './subject';
 
 export interface RenderedPhoto {
   uri: string;
   width: number;
   height: number;
+  /** Set on finished exports: JPEG normally, PNG for a cutout (it has a transparent background). */
+  mime?: 'image/jpeg' | 'image/png';
 }
 
 /**
@@ -55,11 +59,20 @@ export async function renderEdit(sourceUri: string, edit: EditState, quality: Ex
   const image = Skia.Image.MakeImageFromEncoded(data);
   if (!image) throw new Error('Could not read this photo');
 
-  const graded = isNeutral(params) ? image : gradeImage(image, params);
-  const bytes = encodeJpeg(graded, EXPORT_QUALITY[quality].jpegQuality);
-  const file = new File(Paths.cache, `lumen-${Date.now()}.jpg`);
+  // If no person is found the photo is exported without the background effect, as a normal JPEG.
+  let backdrop: Backdrop | undefined;
+  const { mode, blur } = edit.background ?? { mode: 'none', blur: 0 };
+  if (mode !== 'none') {
+    const mask = await segmentPerson(image);
+    if (mask) backdrop = { mode, blur, mask };
+  }
+
+  const format = exportFormat({ background: { mode: backdrop?.mode ?? 'none', blur } });
+  const rendered = isNeutral(params) && !backdrop ? image : renderImage(image, params, backdrop);
+  const bytes = format.extension === 'png' ? encodePng(rendered) : encodeJpeg(rendered, EXPORT_QUALITY[quality].jpegQuality);
+  const file = new File(Paths.cache, `lumen-${Date.now()}.${format.extension}`);
   file.write(bytes);
-  return { uri: file.uri, width: graded.width(), height: graded.height() };
+  return { uri: file.uri, width: rendered.width(), height: rendered.height(), mime: format.mime };
 }
 
 export type SaveResult = { saved: true } | { saved: false; reason: 'permission' | 'error'; message?: string };

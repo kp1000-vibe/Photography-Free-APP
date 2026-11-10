@@ -11,6 +11,7 @@ import { SkiaCamera, type SkiaCameraRef } from 'react-native-vision-camera-skia'
 import { createSynchronizable } from 'react-native-worklets';
 import {
   NO_ADJUSTMENTS,
+  NO_BACKGROUND,
   centeredCrop,
   getFilter,
   isNeutral,
@@ -155,6 +156,7 @@ export default function CameraScreen() {
       adjustments: { ...NO_ADJUSTMENTS, smooth: skin.smooth, blemish: skin.blemish },
       rotation: 0,
       crop: centeredCrop(3, 4, aspect === '3:4' ? null : aspectValue),
+      background: { ...NO_BACKGROUND },
     };
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
     setFlashOverlay(true);

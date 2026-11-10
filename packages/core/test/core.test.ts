@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BACKGROUND_COMPOSITE_SKSL,
+  BACKGROUND_KNOCKOUT_SKSL,
   FILTERS,
+  NO_BACKGROUND,
+  SEGMENT_SIZE,
+  backgroundLayerSize,
+  blurSigma,
+  exportFormat,
+  hasSubject,
+  maskToRGBA,
+  normalizeEdit,
+  sameEdit,
+  subjectCoverage,
+  toBackgroundUniforms,
+  toSegmentInput,
   NEUTRAL,
   NO_ADJUSTMENTS,
   SKSL_SHADER,
@@ -289,6 +303,86 @@ describe('skin retouching', () => {
     gradeRGBA(expected, W, H, { ...p, smooth: 0, blemish: 0 });
     gradeRGBA(data, W, H, p);
     expect(data).toEqual(expected);
+  });
+});
+
+describe('background blur and cutout', () => {
+  const PIXELS = SEGMENT_SIZE * SEGMENT_SIZE;
+
+  it('is off by default', () => {
+    expect(NO_BACKGROUND.mode).toBe('none');
+    expect(initialEdit().background).toEqual(NO_BACKGROUND);
+  });
+
+  it('converts RGBA pixels to the model input and rejects the wrong size', () => {
+    const rgba = new Uint8Array(PIXELS * 4);
+    rgba.set([255, 0, 51, 255], 0);
+    rgba.set([0, 255, 102, 7], (PIXELS - 1) * 4);
+    const input = toSegmentInput(rgba);
+    expect(input.length).toBe(PIXELS * 3);
+    expect(Array.from(input.slice(0, 3))).toEqual([1, 0, 0.2].map(Math.fround));
+    expect(Array.from(input.slice(-3))).toEqual([0, 1, 0.4].map(Math.fround));
+    expect(() => toSegmentInput(new Uint8Array(16))).toThrow();
+  });
+
+  it('turns the model output into an opaque grey mask, clamping bad values', () => {
+    const rgba = maskToRGBA(new Float32Array([0, 1, 0.5, -3, 7, NaN]));
+    expect(Array.from(rgba)).toEqual([
+      0, 0, 0, 255, 255, 255, 255, 255, 128, 128, 128, 255, 0, 0, 0, 255, 255, 255, 255, 255, 0, 0, 0, 255,
+    ]);
+  });
+
+  it('only treats a photo as having a person when enough of it is covered', () => {
+    const mask = new Float32Array(PIXELS);
+    expect(hasSubject(mask)).toBe(false);
+    mask.fill(0.9, 0, PIXELS / 200); // 0.5% of the frame: noise, not a person
+    expect(subjectCoverage(mask)).toBeCloseTo(0.005);
+    expect(hasSubject(mask)).toBe(false);
+    mask.fill(0.9, 0, PIXELS / 4);
+    expect(hasSubject(mask)).toBe(true);
+    expect(subjectCoverage(new Float32Array(0))).toBe(0);
+  });
+
+  it('blur strength scales with the image so preview and export match', () => {
+    expect(blurSigma(1, 1000, 2000)).toBeGreaterThan(blurSigma(0.5, 1000, 2000));
+    expect(blurSigma(0.5, 1000, 2000)).toBeGreaterThan(blurSigma(0, 1000, 2000));
+    expect(blurSigma(0, 1000, 2000)).toBeGreaterThan(0);
+    expect(blurSigma(0.5, 4000, 3000)).toBeCloseTo(blurSigma(0.5, 1600, 1200) * 2.5);
+    expect(blurSigma(5, 100, 100)).toBe(blurSigma(1, 100, 100));
+  });
+
+  it('renders the blurred layer small, never larger than the photo', () => {
+    expect(backgroundLayerSize(4000, 3000)).toMatchObject({ width: 640, height: 480 });
+    expect(backgroundLayerSize(300, 200)).toEqual({ width: 300, height: 200, scale: 1 });
+  });
+
+  it('uniform arrays match the shader declarations', () => {
+    const count = (sksl: string) =>
+      [...sksl.matchAll(/uniform (float|vec2|vec3) \w+;/g)].reduce((n, m) => n + (m[1] === 'float' ? 1 : Number(m[1]!.slice(3))), 0);
+    expect(toBackgroundUniforms(640, 480, 'blur').knockout.length).toBe(count(BACKGROUND_KNOCKOUT_SKSL));
+    expect(toBackgroundUniforms(640, 480, 'blur').composite).toEqual([640, 480, 0]);
+    expect(toBackgroundUniforms(640, 480, 'cutout').composite).toEqual([640, 480, 1]);
+    expect(toBackgroundUniforms(640, 480, 'cutout').composite.length).toBe(count(BACKGROUND_COMPOSITE_SKSL));
+  });
+
+  it('cutouts export as PNG, everything else as JPEG', () => {
+    expect(exportFormat({ background: { mode: 'cutout', blur: 0 } })).toEqual({ extension: 'png', mime: 'image/png' });
+    expect(exportFormat({ background: { mode: 'blur', blur: 1 } }).extension).toBe('jpg');
+    expect(exportFormat(initialEdit()).mime).toBe('image/jpeg');
+  });
+
+  it('edits saved by older versions load with skin and background off', () => {
+    const { background: _bg, ...withoutBackground } = initialEdit('warm', 0.5);
+    const { smooth: _s, blemish: _b, ...oldAdjustments } = { ...withoutBackground.adjustments, contrast: 0.3 };
+    const loaded = normalizeEdit({ ...withoutBackground, adjustments: oldAdjustments as typeof NO_ADJUSTMENTS, rotation: 90 });
+    expect(loaded.background).toEqual(NO_BACKGROUND);
+    expect(loaded.adjustments).toEqual({ ...NO_ADJUSTMENTS, contrast: 0.3 });
+    expect(loaded).toMatchObject({ filterId: 'warm', intensity: 0.5, rotation: 90 });
+    // A current edit passes through unchanged, so opening a photo never marks it as edited.
+    const current = { ...initialEdit('film'), background: { mode: 'blur' as const, blur: 0.4 } };
+    expect(sameEdit(normalizeEdit(current), current)).toBe(true);
+    expect(normalizeEdit(null)).toEqual(initialEdit());
+    expect(normalizeEdit({ background: { mode: 'nonsense' as 'blur', blur: 9 } }).background).toEqual({ mode: 'none', blur: 1 });
   });
 });
 

@@ -4,3 +4,4 @@ export * from './shader';
 export * from './history';
 export * from './edit';
 export * from './ads';
+export * from './subject';

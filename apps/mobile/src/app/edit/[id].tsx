@@ -1,4 +1,4 @@
-import { Canvas, Fill, Group, ImageShader, Rect, Shader, useImage } from '@shopify/react-native-skia';
+import { Canvas, Fill, FilterMode, Group, ImageShader, Rect, Shader, useImage, type SkImage } from '@shopify/react-native-skia';
 import { ImageManipulator } from 'expo-image-manipulator';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Sharing from 'expo-sharing';
@@ -20,7 +20,9 @@ import {
   sameEdit,
   toUniforms,
   undo,
+  toBackgroundUniforms,
   type Adjustments,
+  type BackgroundMode,
   type EditState,
   type ExportQuality,
   type History,
@@ -31,17 +33,34 @@ import { Slider } from '../../components/Slider';
 import { useAds } from '../../lib/ads';
 import { renderEdit, renderGeometry, saveToPhotos } from '../../lib/export';
 import { getPhoto, removePhoto, updatePhoto, useLibrary, type LibraryItem } from '../../lib/library';
-import { gradeEffect } from '../../lib/skiaGrade';
+import { compositeEffect, gradeEffect, makeBackgroundLayer } from '../../lib/skiaGrade';
+import { segmentPerson } from '../../lib/subject';
 import { colors, radius, space, type } from '../../theme';
 
-type Tab = 'filters' | 'adjust' | 'skin' | 'crop';
+type Tab = 'filters' | 'adjust' | 'skin' | 'background' | 'crop';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'filters', label: 'Filters' },
   { id: 'adjust', label: 'Adjust' },
   { id: 'skin', label: 'Skin' },
+  { id: 'background', label: 'Background' },
   { id: 'crop', label: 'Crop' },
 ];
+
+const BACKGROUNDS: { mode: BackgroundMode; label: string }[] = [
+  { mode: 'none', label: 'Original' },
+  { mode: 'blur', label: 'Blur' },
+  { mode: 'cutout', label: 'Cutout' },
+];
+
+const LINEAR = { filter: FilterMode.Linear };
+
+/** The person mask for one preview image. `mask` is null when no person was found or detection failed. */
+interface Subject {
+  image: SkImage;
+  mask: SkImage | null;
+  failed: boolean;
+}
 
 const ADJUSTMENTS: { key: keyof Adjustments; label: string }[] = [
   { key: 'brightness', label: 'Brightness' },
@@ -145,6 +164,34 @@ function Editor({ item }: { item: LibraryItem }) {
 
   const image = useImage(previewUri ?? undefined);
 
+  // Find the person the first time a background effect is asked for, and again when rotate/crop changes the image.
+  const backgroundMode = current.background.mode;
+  const [subject, setSubject] = useState<Subject | null>(null);
+  useEffect(() => {
+    if (!image || backgroundMode === 'none' || subject?.image === image) return;
+    let cancelled = false;
+    segmentPerson(image)
+      .then((mask) => !cancelled && setSubject({ image, mask, failed: false }))
+      .catch(() => !cancelled && setSubject({ image, mask: null, failed: true }));
+    return () => {
+      cancelled = true;
+    };
+  }, [image, backgroundMode, subject]);
+  const subjectReady = !!image && subject?.image === image;
+  const mask = subjectReady ? subject.mask : null;
+  const backgroundNote =
+    backgroundMode === 'none'
+      ? 'Blur or remove what’s behind a person. It runs on your phone; the photo is never uploaded.'
+      : !subjectReady
+        ? 'Finding the person…'
+        : subject.failed
+          ? 'Background effects aren’t available on this device.'
+          : !mask
+            ? 'No person found in this photo, so the background is left as it is.'
+            : backgroundMode === 'cutout'
+              ? 'Saves as a PNG with a transparent background.'
+              : null;
+
   const dirty = !sameEdit(current, savedEdit);
 
   const leave = useCallback(() => {
@@ -170,6 +217,15 @@ function Editor({ item }: { item: LibraryItem }) {
     const p = comparing ? NEUTRAL : editParams(current);
     return { u_size: [image.width(), image.height()], ...toUniforms(p) };
   }, [current, comparing, image]);
+
+  // Blur and cutout are drawn as a second pass over the graded photo.
+  const backdrop = useMemo(() => {
+    if (!image || !mask || comparing || backgroundMode === 'none') return null;
+    const layer = backgroundMode === 'blur' ? makeBackgroundLayer(image, editParams(current), mask, current.background.blur) : null;
+    if (backgroundMode === 'blur' && !layer) return null;
+    const [width, height, cutout] = toBackgroundUniforms(image.width(), image.height(), backgroundMode).composite;
+    return { layer: layer ?? mask, mask, uniforms: { u_size: [width, height], u_cutout: cutout } };
+  }, [image, mask, comparing, backgroundMode, current]);
 
   const fitted = useMemo(() => {
     if (!image || canvas.width === 0) return null;
@@ -212,7 +268,8 @@ function Editor({ item }: { item: LibraryItem }) {
           setMessage('Sharing isn’t available on this device.');
           return;
         }
-        await Sharing.shareAsync(rendered.uri, { mimeType: 'image/jpeg', UTI: 'public.jpeg' });
+        const png = rendered.mime === 'image/png';
+        await Sharing.shareAsync(rendered.uri, { mimeType: png ? 'image/png' : 'image/jpeg', UTI: png ? 'public.png' : 'public.jpeg' });
       }
       // The edit is safely written before any ad can appear.
       ads.onExportComplete();
@@ -268,9 +325,19 @@ function Editor({ item }: { item: LibraryItem }) {
             <Fill color={colors.bg} />
             <Group transform={[{ translateX: fitted.x }, { translateY: fitted.y }, { scale: fitted.scale }]}>
               <Rect x={0} y={0} width={image.width()} height={image.height()}>
-                <Shader source={gradeEffect} uniforms={uniforms}>
-                  <ImageShader image={image} fit="fill" rect={{ x: 0, y: 0, width: image.width(), height: image.height() }} />
-                </Shader>
+                {backdrop ? (
+                  <Shader source={compositeEffect} uniforms={backdrop.uniforms}>
+                    <Shader source={gradeEffect} uniforms={uniforms}>
+                      <ImageShader image={image} fit="fill" rect={{ x: 0, y: 0, width: image.width(), height: image.height() }} />
+                    </Shader>
+                    <ImageShader image={backdrop.layer} fit="fill" sampling={LINEAR} rect={{ x: 0, y: 0, width: image.width(), height: image.height() }} />
+                    <ImageShader image={backdrop.mask} fit="fill" sampling={LINEAR} rect={{ x: 0, y: 0, width: image.width(), height: image.height() }} />
+                  </Shader>
+                ) : (
+                  <Shader source={gradeEffect} uniforms={uniforms}>
+                    <ImageShader image={image} fit="fill" rect={{ x: 0, y: 0, width: image.width(), height: image.height() }} />
+                  </Shader>
+                )}
               </Rect>
             </Group>
           </Canvas>
@@ -358,6 +425,46 @@ function Editor({ item }: { item: LibraryItem }) {
           </View>
         )}
 
+        {tab === 'background' && (
+          <View style={styles.panelBody}>
+            {backgroundNote && (
+              <Text style={styles.hint} accessibilityLiveRegion="polite">
+                {backgroundNote}
+              </Text>
+            )}
+            <View style={styles.sliderRow}>
+              {backgroundMode === 'blur' && (
+                <>
+                  <Text style={styles.sliderLabel}>Blur</Text>
+                  <View style={{ flex: 1 }}>
+                    <Slider
+                      value={current.background.blur}
+                      onChange={(v) => preview({ ...current, background: { ...current.background, blur: v } })}
+                      onCommit={(v) => commit({ ...current, background: { ...current.background, blur: v } })}
+                      accessibilityLabel="Background blur strength"
+                      formatValue={(v) => `${Math.round(v * 100)} percent`}
+                    />
+                  </View>
+                </>
+              )}
+            </View>
+            <View style={styles.chips}>
+              {BACKGROUNDS.map((b) => (
+                <Pressable
+                  key={b.mode}
+                  onPress={() => commit({ ...current, background: { ...current.background, mode: b.mode } })}
+                  style={[styles.chip, backgroundMode === b.mode && styles.chipActive]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Background ${b.label}`}
+                  accessibilityState={{ selected: backgroundMode === b.mode }}
+                >
+                  <Text style={[styles.chipText, backgroundMode === b.mode && styles.chipTextActive]}>{b.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
+
         {tab === 'crop' && (
           <View style={styles.panelBody}>
             <View style={styles.chips}>
@@ -395,7 +502,9 @@ function Editor({ item }: { item: LibraryItem }) {
         <View style={styles.tabs} accessibilityRole="tablist">
           {TABS.map((t) => (
             <Pressable key={t.id} onPress={() => setTab(t.id)} style={styles.tab} accessibilityRole="tab" accessibilityState={{ selected: tab === t.id }}>
-              <Text style={[styles.tabText, tab === t.id && styles.tabTextActive]}>{t.label}</Text>
+              <Text style={[styles.tabText, tab === t.id && styles.tabTextActive]} numberOfLines={1} adjustsFontSizeToFit>
+                {t.label}
+              </Text>
             </Pressable>
           ))}
         </View>
@@ -448,7 +557,7 @@ const styles = StyleSheet.create({
   chipTextActive: { color: colors.text },
   rotate: { alignSelf: 'flex-start', marginLeft: space.lg, minHeight: 44, paddingHorizontal: space.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, justifyContent: 'center' },
   tabs: { flexDirection: 'row', justifyContent: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  tab: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
+  tab: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   tabText: { ...type.label, color: colors.textMuted },
   tabTextActive: { color: colors.text },
   exportRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg },

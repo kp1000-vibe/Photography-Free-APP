@@ -20,7 +20,7 @@ import {
   type EditState,
 } from '@lumen/core';
 import { FilterTray } from '../components/FilterTray';
-import { IconButton } from '../components/IconButton';
+import { Icon, type IconName } from '../components/Icon';
 import { Slider } from '../components/Slider';
 import { renderEdit, saveToPhotos } from '../lib/export';
 import { addPhoto, toFileUri, updatePhoto, useLibrary } from '../lib/library';
@@ -50,9 +50,16 @@ const FLASH_ORDER: FlashMode[] = ['off', 'auto', 'on'];
 
 /** Opt-in skin retouching; both start at 0 and nothing is applied until the user asks. */
 const SKIN = [
-  { key: 'smooth', label: 'Smooth' },
-  { key: 'blemish', label: 'Blemish' },
+  { key: 'smooth', label: 'Smooth', icon: 'smooth' },
+  { key: 'blemish', label: 'Blemish', icon: 'blemish' },
 ] as const;
+
+type Panel = 'beauty' | 'filters';
+const PANELS: { id: Panel; label: string }[] = [
+  { id: 'beauty', label: 'Beauty' },
+  { id: 'filters', label: 'Filters' },
+];
+const FLASH_ICON: Record<FlashMode, IconName> = { off: 'flashOff', on: 'flashOn', auto: 'flashAuto' };
 type SkinKey = (typeof SKIN)[number]['key'];
 
 export default function CameraScreen() {
@@ -104,7 +111,7 @@ export default function CameraScreen() {
   const [showExposure, setShowExposure] = useState(false);
   const [skin, setSkin] = useState<Record<SkinKey, number>>({ smooth: 0, blemish: 0 });
   const [skinKey, setSkinKey] = useState<SkinKey>('smooth');
-  const [showSkin, setShowSkin] = useState(false);
+  const [panel, setPanel] = useState<Panel>('filters');
   const skinOn = skin.smooth > 0 || skin.blemish > 0;
   const [pending, setPending] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
@@ -246,39 +253,34 @@ export default function CameraScreen() {
       <StatusBar style="light" />
 
       <View style={styles.topBar}>
-        <IconButton
+        <TopButton
+          icon={FLASH_ICON[flash]}
           label={`Flash ${flash}`}
           onPress={() => setFlash(FLASH_ORDER[(FLASH_ORDER.indexOf(flash) + 1) % FLASH_ORDER.length]!)}
           disabled={!device?.hasFlash}
           active={flash !== 'off'}
+        />
+        {device?.hasTorch && <TopButton icon="torch" label={torch ? 'Torch on' : 'Torch off'} onPress={() => setTorch((t) => !t)} active={torch} />}
+        <TopButton
+          icon="timer"
+          label={`Timer ${timer === 0 ? 'off' : `${timer} seconds`}`}
+          onPress={() => setTimer(TIMERS[(TIMERS.indexOf(timer) + 1) % TIMERS.length]!)}
+          active={timer > 0}
+          badge={timer > 0 ? `${timer}s` : undefined}
+        />
+        <Pressable
+          onPress={() => setAspect(ASPECTS[(ASPECTS.findIndex((a) => a.id === aspect) + 1) % ASPECTS.length]!.id)}
+          style={styles.topBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Aspect ratio ${aspect}`}
         >
-          {flash === 'off' ? 'Flash off' : flash === 'auto' ? 'Flash auto' : 'Flash on'}
-        </IconButton>
-        {device?.hasTorch && (
-          <IconButton label={torch ? 'Torch on' : 'Torch off'} onPress={() => setTorch((t) => !t)} active={torch}>
-            Torch
-          </IconButton>
-        )}
-        <IconButton label={`Timer ${timer === 0 ? 'off' : `${timer} seconds`}`} onPress={() => setTimer(TIMERS[(TIMERS.indexOf(timer) + 1) % TIMERS.length]!)} active={timer > 0}>
-          {timer === 0 ? 'Timer' : `${timer}s`}
-        </IconButton>
-        <IconButton label={`Aspect ratio ${aspect}`} onPress={() => setAspect(ASPECTS[(ASPECTS.findIndex((a) => a.id === aspect) + 1) % ASPECTS.length]!.id)}>
-          {aspect}
-        </IconButton>
-        <IconButton label={grid ? 'Hide grid' : 'Show grid'} onPress={() => setGrid((g) => !g)} active={grid}>
-          Grid
-        </IconButton>
+          <View style={styles.aspectChip}>
+            <Text style={styles.aspectText}>{aspect}</Text>
+          </View>
+        </Pressable>
+        <TopButton icon="grid" label={grid ? 'Hide grid' : 'Show grid'} onPress={() => setGrid((g) => !g)} active={grid} />
         {exposureRange && (
-          <IconButton
-            label="Exposure"
-            onPress={() => {
-              setShowExposure((s) => !s);
-              setShowSkin(false);
-            }}
-            active={showExposure || exposure !== 0}
-          >
-            ±EV
-          </IconButton>
+          <TopButton icon="exposure" label="Exposure" onPress={() => setShowExposure((s) => !s)} active={showExposure || exposure !== 0} />
         )}
       </View>
 
@@ -344,18 +346,6 @@ export default function CameraScreen() {
             <View style={[styles.gridLineH, { top: '66.66%' }]} />
           </View>
         )}
-        <Pressable
-          style={[styles.skinToggle, { top: maskHeight + space.md }]}
-          onPress={() => {
-            setShowSkin((s) => !s);
-            setShowExposure(false);
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={`Skin retouching, ${skinOn ? 'on' : 'off'}`}
-          accessibilityState={{ expanded: showSkin }}
-        >
-          <Text style={[styles.pillText, (showSkin || skinOn) && styles.zoomTextActive]}>Skin</Text>
-        </Pressable>
         {focusPoint && <View pointerEvents="none" style={[styles.focusRing, { left: focusPoint.x - 32, top: focusPoint.y - 32 }]} />}
         {flashOverlay && <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.shutterFlash]} />}
         {countdown > 0 && (
@@ -410,72 +400,123 @@ export default function CameraScreen() {
               ))}
             </View>
           )}
+            <View style={styles.modeRow} accessibilityRole="tablist">
+              {PANELS.map((m) => (
+                <Pressable
+                  key={m.id}
+                  onPress={() => {
+                    setPanel(m.id);
+                    setShowExposure(false);
+                    Haptics.selectionAsync().catch(() => undefined);
+                  }}
+                  style={[styles.mode, panel === m.id && styles.modeActive]}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: panel === m.id }}
+                >
+                  <Icon name={m.id} size={18} color={panel === m.id ? colors.accent : colors.textMuted} />
+                  <Text style={[styles.modeText, panel === m.id && styles.modeTextActive]}>{m.label}</Text>
+                  {m.id === 'beauty' && skinOn && <View style={styles.modeDot} />}
+                </Pressable>
+              ))}
+            </View>
         </View>
       </View>
 
       <View style={[styles.controls, { paddingBottom: insets.bottom + space.sm }]}>
-        {showExposure && exposureRange ? (
-          <View style={styles.sliderRow}>
-            <Text style={styles.sliderLabel}>EV</Text>
-            <View style={{ flex: 1 }}>
-              <Slider
-                value={exposure}
-                min={exposureRange.min}
-                max={exposureRange.max}
-                origin={0}
-                step={0.1}
-                onChange={setExposure}
-                accessibilityLabel="Exposure compensation"
-                formatValue={(v) => `${v.toFixed(1)} EV`}
-              />
+        <View style={styles.panel}>
+          {showExposure && exposureRange ? (
+            <View style={styles.sliderRow}>
+              <Icon name="exposure" size={20} color={colors.textMuted} />
+              <View style={{ flex: 1 }}>
+                <Slider
+                  value={exposure}
+                  min={exposureRange.min}
+                  max={exposureRange.max}
+                  origin={0}
+                  step={0.1}
+                  onChange={setExposure}
+                  accessibilityLabel="Exposure compensation"
+                  formatValue={(v) => `${v.toFixed(1)} EV`}
+                />
+              </View>
+              <Text style={styles.sliderValue}>{exposure > 0 ? '+' : ''}{exposure.toFixed(1)}</Text>
             </View>
-          </View>
-        ) : showSkin ? (
-          <View style={styles.sliderRow}>
-            {SKIN.map((s) => (
-              <Pressable
-                key={s.key}
-                onPress={() => setSkinKey(s.key)}
-                style={[styles.skinChip, skinKey === s.key && styles.skinChipActive]}
-                accessibilityRole="button"
-                accessibilityLabel={`${s.label}, ${Math.round(skin[s.key] * 100)} percent`}
-                accessibilityState={{ selected: skinKey === s.key }}
-              >
-                <Text style={[styles.pillText, skinKey !== s.key && styles.skinChipTextIdle]}>
-                  {s.label}
-                  {skin[s.key] > 0 ? ' •' : ''}
-                </Text>
-              </Pressable>
-            ))}
-            <View style={{ flex: 1 }}>
-              <Slider
-                key={skinKey}
-                value={skin[skinKey]}
-                onChange={(v) => setSkin((prev) => ({ ...prev, [skinKey]: v }))}
-                accessibilityLabel={`${SKIN.find((s) => s.key === skinKey)!.label} skin retouching`}
-                formatValue={(v) => `${Math.round(v * 100)} percent`}
-              />
+          ) : panel === 'beauty' ? (
+            <View style={styles.sliderRow}>
+              <Text style={styles.sliderLabel}>{SKIN.find((k) => k.key === skinKey)!.label}</Text>
+              <View style={{ flex: 1 }}>
+                <Slider
+                  key={skinKey}
+                  value={skin[skinKey]}
+                  onChange={(v) => setSkin((prev) => ({ ...prev, [skinKey]: v }))}
+                  accessibilityLabel={`${SKIN.find((k) => k.key === skinKey)!.label} skin retouching`}
+                  formatValue={(v) => `${Math.round(v * 100)} percent`}
+                />
+              </View>
+              <Text style={styles.sliderValue}>{Math.round(skin[skinKey] * 100)}</Text>
             </View>
-          </View>
-        ) : filterId !== 'original' ? (
-          <View style={styles.sliderRow}>
-            <Text style={styles.sliderLabel}>{getFilter(filterId).name}</Text>
-            <View style={{ flex: 1 }}>
-              <Slider value={intensity} onChange={setIntensity} accessibilityLabel={`${getFilter(filterId).name} intensity`} formatValue={(v) => `${Math.round(v * 100)} percent`} />
+          ) : filterId !== 'original' ? (
+            <View style={styles.sliderRow}>
+              <Text style={styles.sliderLabel}>{getFilter(filterId).name}</Text>
+              <View style={{ flex: 1 }}>
+                <Slider value={intensity} onChange={setIntensity} accessibilityLabel={`${getFilter(filterId).name} intensity`} formatValue={(v) => `${Math.round(v * 100)} percent`} />
+              </View>
+              <Text style={styles.sliderValue}>{Math.round(intensity * 100)}</Text>
             </View>
-          </View>
-        ) : (
-          <View style={styles.sliderRow} />
-        )}
+          ) : (
+            <View style={styles.sliderRow} />
+          )}
 
-        <FilterTray
-          selectedId={filterId}
-          onSelect={(id) => {
-            setFilterId(id);
-            setIntensity(getFilter(id).defaultIntensity);
-            Haptics.selectionAsync().catch(() => undefined);
-          }}
-        />
+          {panel === 'beauty' ? (
+            <View style={styles.toolRow}>
+              {SKIN.map((k) => {
+                const selected = skinKey === k.key;
+                const on = skin[k.key] > 0;
+                return (
+                  <Pressable
+                    key={k.key}
+                    onPress={() => {
+                      setSkinKey(k.key);
+                      setShowExposure(false);
+                      Haptics.selectionAsync().catch(() => undefined);
+                    }}
+                    style={styles.tool}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${k.label}, ${Math.round(skin[k.key] * 100)} percent`}
+                    accessibilityState={{ selected }}
+                  >
+                    <View style={[styles.toolCircle, selected && styles.toolCircleSelected]}>
+                      <Icon name={k.icon} size={26} color={selected || on ? colors.accent : colors.text} />
+                    </View>
+                    <Text style={[styles.toolLabel, (selected || on) && styles.toolLabelActive]}>{k.label}</Text>
+                  </Pressable>
+                );
+              })}
+              <Pressable
+                onPress={() => setSkin({ smooth: 0, blemish: 0 })}
+                disabled={!skinOn}
+                style={[styles.tool, !skinOn && styles.toolDisabled]}
+                accessibilityRole="button"
+                accessibilityLabel="Turn off skin retouching"
+              >
+                <View style={styles.toolCircle}>
+                  <Icon name="reset" size={24} />
+                </View>
+                <Text style={styles.toolLabel}>Off</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <FilterTray
+              selectedId={filterId}
+              onSelect={(id) => {
+                setFilterId(id);
+                setIntensity(getFilter(id).defaultIntensity);
+                setShowExposure(false);
+                Haptics.selectionAsync().catch(() => undefined);
+              }}
+            />
+          )}
+        </View>
 
         <View style={styles.shutterRow}>
           <Pressable
@@ -487,7 +528,7 @@ export default function CameraScreen() {
             {lastPhoto ? (
               <Image source={{ uri: lastPhoto.exportedUri ?? lastPhoto.originalUri }} style={StyleSheet.absoluteFill} contentFit="cover" />
             ) : (
-              <Text style={styles.thumbText}>Gallery</Text>
+              <Icon name="gallery" size={24} color={colors.textMuted} />
             )}
           </Pressable>
           <Pressable
@@ -499,12 +540,47 @@ export default function CameraScreen() {
           >
             <View style={styles.shutterInner} />
           </Pressable>
-          <IconButton label={position === 'back' ? 'Switch to front camera' : 'Switch to back camera'} onPress={flipCamera} style={styles.flip}>
-            Flip
-          </IconButton>
+          <Pressable
+            onPress={flipCamera}
+            style={({ pressed }) => [styles.flip, pressed && styles.shutterPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={position === 'back' ? 'Switch to front camera' : 'Switch to back camera'}
+          >
+            <Icon name="flip" size={26} />
+          </Pressable>
         </View>
       </View>
     </View>
+  );
+}
+
+function TopButton({
+  icon,
+  label,
+  onPress,
+  active,
+  disabled,
+  badge,
+}: {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  active?: boolean;
+  disabled?: boolean;
+  badge?: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [styles.topBtn, pressed && styles.topBtnPressed, disabled && styles.toolDisabled]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled, selected: active }}
+    >
+      <Icon name={icon} size={24} color={active ? colors.accent : colors.text} />
+      {badge && <Text style={styles.topBadge}>{badge}</Text>}
+    </Pressable>
   );
 }
 
@@ -560,20 +636,35 @@ const styles = StyleSheet.create({
   zoomChipActive: { backgroundColor: 'rgba(255,255,255,0.15)' },
   zoomText: { ...type.caption, color: colors.text },
   zoomTextActive: { color: colors.accent },
-  skinToggle: { position: 'absolute', right: space.md, minWidth: 48, height: 44, paddingHorizontal: space.md, borderRadius: radius.pill, backgroundColor: colors.scrim, alignItems: 'center', justifyContent: 'center' },
-  skinChip: { height: 40, paddingHorizontal: space.md, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
-  skinChipActive: { backgroundColor: colors.surfaceRaised },
-  skinChipTextIdle: { color: colors.textMuted },
+  topBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  topBtnPressed: { backgroundColor: 'rgba(255,255,255,0.08)' },
+  topBadge: { position: 'absolute', bottom: 2, fontSize: 10, fontWeight: '700', color: colors.accent },
+  aspectChip: { borderWidth: 1.6, borderColor: colors.text, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1 },
+  aspectText: { fontSize: 12, fontWeight: '700', color: colors.text },
+  panel: { justifyContent: 'flex-end', gap: space.sm },
+  sliderValue: { ...type.caption, color: colors.text, width: 34, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  toolRow: { flexDirection: 'row', justifyContent: 'center', gap: space.xxl, paddingHorizontal: space.lg, height: 84 },
+  tool: { alignItems: 'center', gap: 6 },
+  toolDisabled: { opacity: 0.35 },
+  toolCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'transparent' },
+  toolCircleSelected: { borderColor: colors.accent, backgroundColor: colors.surfaceRaised },
+  toolLabel: { ...type.caption, color: colors.textMuted },
+  toolLabelActive: { color: colors.text },
+  modeRow: { flexDirection: 'row', backgroundColor: colors.scrim, borderRadius: radius.pill, padding: 3, gap: 2 },
+  mode: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: space.lg, borderRadius: radius.pill },
+  modeActive: { backgroundColor: 'rgba(255,255,255,0.14)' },
+  modeText: { ...type.label, color: colors.textMuted, letterSpacing: 0.3 },
+  modeTextActive: { color: colors.accent },
+  modeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent },
   controls: { flex: 1, justifyContent: 'flex-end', gap: space.sm },
   sliderRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, gap: space.md, minHeight: 44 },
   sliderLabel: { ...type.caption, color: colors.textMuted, width: 64 },
   shutterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.xl, marginTop: space.sm },
   thumb: { width: 52, height: 52, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: colors.surfaceRaised, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
-  thumbText: { ...type.caption, color: colors.textMuted, fontSize: 10 },
   shutter: { width: 78, height: 78, borderRadius: 39, borderWidth: 4, borderColor: colors.text, alignItems: 'center', justifyContent: 'center' },
   shutterPressed: { transform: [{ scale: 0.94 }] },
   shutterInner: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.text },
-  flip: { width: 52 },
+  flip: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   gate: { paddingHorizontal: space.xl, gap: space.lg, justifyContent: 'center' },
   brand: { ...type.label, color: colors.accent, letterSpacing: 2, textTransform: 'uppercase' },
   title: { ...type.title, color: colors.text },

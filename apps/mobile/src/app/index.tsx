@@ -4,9 +4,9 @@ import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, AppState, Linking, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useCameraDevice, useCameraPermission, usePhotoOutput, type FlashMode } from 'react-native-vision-camera';
+import { useCameraDevice, useCameraPermission, usePhotoOutput, type FlashMode, type TargetVideoPixelFormat } from 'react-native-vision-camera';
 import { SkiaCamera, type SkiaCameraRef } from 'react-native-vision-camera-skia';
 import { createSynchronizable } from 'react-native-worklets';
 import {
@@ -39,6 +39,13 @@ const ASPECTS = [
 type AspectId = (typeof ASPECTS)[number]['id'];
 
 const TIMERS = [0, 3, 10] as const;
+
+/**
+ * Frame formats to try for the live preview, fastest first. Android's
+ * zero-copy GPU format ('native') is not supported for frame analysis on
+ * every phone; when the camera refuses it we fall back to YUV, then RGB.
+ */
+const PIXEL_FORMATS: readonly TargetVideoPixelFormat[] = Platform.OS === 'android' ? ['native', 'yuv', 'rgb'] : ['yuv'];
 const FLASH_ORDER: FlashMode[] = ['off', 'auto', 'on'];
 
 /** Opt-in skin retouching; both start at 0 and nothing is applied until the user asks. */
@@ -104,6 +111,24 @@ export default function CameraScreen() {
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const [flashOverlay, setFlashOverlay] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [formatIndex, setFormatIndex] = useState(0);
+  const pixelFormat = PIXEL_FORMATS[formatIndex]!;
+  // Whether the camera has started at least once with the current format.
+  const startedWithFormat = useRef(false);
+  const onCameraError = useCallback(
+    (e: { message: string }) => {
+      if (!startedWithFormat.current && formatIndex < PIXEL_FORMATS.length - 1) {
+        // This phone rejected the frame format: try the next one quietly.
+        setFormatIndex((i) => Math.min(i + 1, PIXEL_FORMATS.length - 1));
+        return;
+      }
+      setCameraError(e.message);
+    },
+    [formatIndex],
+  );
+  useEffect(() => {
+    startedWithFormat.current = false;
+  }, [formatIndex]);
 
   // Push the selected filter and skin retouching to the frame thread.
   useEffect(() => {
@@ -274,8 +299,13 @@ export default function CameraScreen() {
               exposure={exposureRange ? exposure : undefined}
               torchMode={torch ? 'on' : 'off'}
               enablePreviewSizedOutputBuffers
-              onError={(e) => setCameraError(e.message)}
-              onStarted={() => setCameraError(null)}
+              key={pixelFormat}
+              pixelFormat={pixelFormat}
+              onError={onCameraError}
+              onStarted={() => {
+                startedWithFormat.current = true;
+                setCameraError(null);
+              }}
               onFrame={(frame, render) => {
                 'worklet';
                 render(({ canvas, frameTexture }) => {
@@ -335,7 +365,20 @@ export default function CameraScreen() {
         )}
         {cameraError && (
           <View style={[styles.center, styles.errorBox]}>
-            <Text style={styles.body}>The camera stopped: {cameraError}</Text>
+            <Text style={styles.body}>The camera couldn’t start on this phone.</Text>
+            <Text style={styles.muted} numberOfLines={3}>
+              {cameraError.split('\n')[0]}
+            </Text>
+            <Pressable
+              style={styles.secondary}
+              onPress={() => {
+                setCameraError(null);
+                setFormatIndex(0);
+              }}
+              accessibilityRole="button"
+            >
+              <Text style={styles.secondaryText}>Try again</Text>
+            </Pressable>
           </View>
         )}
 
